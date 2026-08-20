@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>群守护者 · 后台服务端完整部署教程</title>
+<meta name="description" content="群守护者后台服务端详细部署教程：宝塔 Python 项目管理器部署、反向代理、HTTPS、插件接入、数据备份、OTA 更新、常见问题排查。">
+<style>
+:root { --brand:#4f46e5; --bg:#f1f5f9; --card:#fff; --line:#e2e8f0; --text:#0f172a; --muted:#64748b; }
+* { box-sizing:border-box; }
+html { scroll-behavior:smooth; }
+body { margin:0; font-family:"Microsoft YaHei",ui-sans-serif,system-ui,sans-serif; background:var(--bg); color:var(--text); line-height:1.75; }
+.topbar { background:linear-gradient(120deg,#1e1b4b,#4f46e5 60%,#7c3aed); color:#fff; padding:16px 20px; }
+.topbar .inner { max-width:960px; margin:0 auto; display:flex; align-items:center; gap:12px; }
+.topbar .dot { width:10px; height:10px; border-radius:50%; background:#34d399; box-shadow:0 0 0 3px rgba(52,211,153,.25); }
+.topbar h1 { font-size:17px; margin:0; }
+.topbar .tag { font-size:12px; background:rgba(255,255,255,.18); padding:3px 10px; border-radius:999px; }
+.wrap { max-width:960px; margin:0 auto; padding:18px 16px 60px; }
+.card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:22px 26px; margin-bottom:16px; box-shadow:0 1px 3px rgba(15,23,42,.06); }
+h2 { font-size:19px; border-left:4px solid var(--brand); padding-left:10px; margin:4px 0 12px; }
+h3 { font-size:15px; margin:18px 0 8px; color:var(--brand); }
+p { margin:8px 0; }
+ul, ol { margin:6px 0; padding-left:22px; }
+li { margin:4px 0; }
+code { background:#f1f5f9; border:1px solid var(--line); border-radius:5px; padding:1px 6px; font-size:13px; font-family:Consolas,"Courier New",monospace; }
+pre { background:#0f172a; color:#e2e8f0; border-radius:10px; padding:14px 16px; overflow-x:auto; font-size:13px; line-height:1.6; }
+pre code { background:none; border:0; color:inherit; padding:0; }
+table { width:100%; border-collapse:collapse; font-size:13px; margin:10px 0; }
+th, td { text-align:left; padding:8px 10px; border-bottom:1px solid #eef1f5; vertical-align:top; }
+th { background:#f8fafc; color:var(--muted); }
+.step { display:flex; gap:12px; margin:12px 0; }
+.step .num { flex:0 0 26px; height:26px; border-radius:50%; background:var(--brand); color:#fff; text-align:center; line-height:26px; font-size:13px; font-weight:700; }
+.step .body { flex:1; }
+.warn { background:#fef3c7; border-left:4px solid #f59e0b; padding:9px 14px; border-radius:6px; margin:10px 0; font-size:13px; }
+.ok { background:#d1fae5; border-left:4px solid #10b981; padding:9px 14px; border-radius:6px; margin:10px 0; font-size:13px; }
+.tip { background:#eff6ff; border-left:4px solid #3b82f6; padding:9px 14px; border-radius:6px; margin:10px 0; font-size:13px; }
+.toc a { color:var(--brand); text-decoration:none; }
+.toc a:hover { text-decoration:underline; }
+.toplink { float:right; font-size:12px; color:var(--muted); text-decoration:none; }
+@media (max-width:640px){ .card { padding:16px 14px; } h2{ font-size:17px; } }
+</style>
+</head>
+<body>
+<div class="topbar"><div class="inner"><span class="dot"></span><h1>群守护者 · 后台服务端完整部署教程</h1><span class="tag">v1.1.0</span></div></div>
+<div class="wrap">
+
+<div class="card">
+<h2>📑 目录</h2>
+<div class="toc">
+<p><a href="#s1">1. 架构总览（先看这张图）</a></p>
+<p><a href="#s2">2. 部署前准备（服务器 / 域名 / 宝塔 / 端口）</a></p>
+<p><a href="#s3">3. 上传服务端文件</a></p>
+<p><a href="#s4">4. 安装 Python 环境（宝塔）</a></p>
+<p><a href="#s5">5. 创建项目并启动服务端</a></p>
+<p><a href="#s6">6. 验证服务端是否正常</a></p>
+<p><a href="#s7">7. 域名 + 反向代理 + HTTPS（推荐）</a></p>
+<p><a href="#s8">8. 防火墙与云安全组放行</a></p>
+<p><a href="#s9">9. 注册首个管理员账号</a></p>
+<p><a href="#s10">10. 插件端接入与云同步</a></p>
+<p><a href="#s11">11. 多用户与权限</a></p>
+<p><a href="#s12">12. 误封申诉 / 解禁通道（公开页 /appeal）</a></p>
+<p><a href="#s13">13. 数据备份与换服务器迁移</a></p>
+<p><a href="#s14">14. 升级与更新（OTA / 手动）</a></p>
+<p><a href="#s15">15. 常见问题排查</a></p>
+<p><a href="#s16">16. 附录：目录结构 / API 一览 / 配置开关</a></p>
+</div>
+</div>
+
+<div class="card" id="s1">
+<a class="toplink" href="#top">返回目录 ↑</a>
+<h2>1. 架构总览</h2>
+<pre>
+┌─────────────────────┐   双向同步(启动+每10分钟)   ┌─────────────────────┐
+│  QQ 群机器人服务器     │ ──────────────────────────▶ │    后台服务端服务器     │
+│  群守护者插件 v2.36.8 │ push: 误判复盘/已确认违规/   │  Flask + SQLite        │
+│  （群内审核/撤回/禁言）│      审核信息上传             │  宝塔部署              │
+│                      │ ◀────────────────────────── │  多用户(owner/admin/   │
+└─────────────────────┘  pull: 拉取写回 + 执行管理员动作 │   member) + Web 看板   │
+                                                      └─────────────────────┘
+</pre>
+<ul>
+  <li><b>插件</b>：跑在 AstrBot 机器人所在机器，负责群内一切审核与处罚动作（文本 / 图片 / 视频 / 群名片）。</li>
+  <li><b>服务端</b>（本教程部署对象）：独立部署在另一台服务器（或同台），集中保存数据、提供多人查看 / 操作界面。</li>
+  <li>两者通过 HTTP API 双向同步，插件配置好 <code>sync_server_*</code> 后自动工作，换服务器数据不丢。</li>
+</ul>
+</div>
+
+<div class="card" id="s2">
+<a class="toplink" href="#top">返回目录 ↑</a>
+<h2>2. 部署前准备</h2>
+<table>
+  <tr><th>项目</th><th>要求</th></tr>
+  <tr><td>服务器</td><td>一台可访问公网的 Linux 服务器（腾讯云 / 阿里云 / 华为云等均可，<b>1 核 1G 起步即可</b>）</td></tr>
+  <tr><td>系统</td><td>CentOS 7+ / Ubuntu 20.04+ / Debian 10+</td></tr>
+  <tr><td>宝塔面板</td><td>7.7+（本教程以宝塔「Python 项目管理器」为例）</td></tr>
+  <tr><td>Python</td><td>3.10+（用宝塔安装，见第 4 节）</td></tr>
+  <tr><td>域名</td><td>推荐有（用于 HTTPS，避免 QQ / 微信外链拦截）；没有可用 IP 直连</td></tr>
+  <tr><td>端口</td><td>默认 <code>9000</code>（可改），需在宝塔防火墙与云安全组放行</td></tr>
+</table>
+<div class="tip">如果只是本机 / 内网测试：<code>pip install -r requirements.txt</code> 后 <code>python app.py</code>，
+浏览器打开 <code>http://127.0.0.1:9000</code> 即可，无需服务器与域名。</div>
+</div>
+
+<div class="card" id="s3">
+<a class="toplink" href="#top">返回目录 ↑</a>
+<h2>3. 上传服务端文件</h2>
+<p>服务端压缩包 <code>gg_server.zip</code> 解压后的目录内容如下：</p>
+<pre>
+gg_server/
+  app.py                 # 服务端主程序（API + 后台 + /docs 教程 + /appeal 申诉页）
+  requirements.txt       # 依赖清单（flask）
+  templates/index.html   # 后台管理页面
+  templates/appeal.html  # 公开申诉页（发给群成员）
+  templates/docs.html    # 在线教程页
+  update_source.json     # （可选）OTA 更新源配置
+  data/                  # 运行时自动生成（SQLite 数据库 server.db），备份它即可迁移
+</pre>
+<div class="step"><div class="num">1</div><div class="body">登录宝塔面板 → <b>文件</b> → 进入 <code>/www/wwwroot/</code>（或任意目录）→ <b>上传</b> <code>gg_server.zip</code>。</div></div>
+<div class="step"><div class="num">2</div><div class="body">右键压缩包 → <b>解压</b>，得到 <code>gg_server/</code> 目录。</div></div>
+<div class="step"><div class="num">3</div><div class="body">确认 <code>app.py</code> 在 <code>/www/wwwroot/gg_server/</code> 下，<b>不要多套一层目录</b>。</div></div>
+<div class="warn">若你在本机已有该目录，也可以用命令行上传：<br>
+<pre><code>scp -r gg_server root@你的服务器IP:/www/wwwroot/</code></pre></div>
+</div>
+
+<div class="card" id="s4">
+<a class="toplink" href="#top">返回目录 ↑</a>
+<h2>4. 安装 Python 环境（宝塔）</h2>
+<div class="step"><div class="num">1</div><div class="body">登录宝塔面板 → 左侧 <b>软件商店</b>。</div></div>
+<div class="step"><div class="num">2</div><div class="body">搜索 <b>Python 项目管理器</b> → 点击 <b>安装</b>（若商店只有 Python 项目管理器 2.x 也可以）。</div></div>
+<div class="step"><div class="num">3</div><div class="body">安装完成后进入 <b>Python 项目管理器</b> → <b>Python 版本</b> → 添加一个 <b>3.10+</b> 版本（如 3.10.14 / 3.12），等待编译 / 下载完成。</div></div>
+<div class="tip">系统自带 Python 3.10+ 也可以：<code>python3 --version</code> 确认后，后续命令用 <code>python3</code> 即可。</div>
+</div>
+
+<div class="card" id="s5">
+<a class="toplink" href="#top">返回目录 ↑</a>
+<h2>5. 创建项目并启动服务端</h2>
+<div class="warn"><b>端口说明（重要）</b>：宝塔「Python 项目管理器」分新旧两版，创建界面不同——<br>
+① <b>旧版 1.x</b>（界面里有「监听端口」框）：直接在「监听端口」填 <code>9000</code>；<br>
+② <b>新版 2.x</b>（没有端口输入框）：在「启动参数」填 <code>9000</code>（或 <code>--port 9000</code>）；留空则默认监听 9000。<br>
+反向代理目标写 <code>http://127.0.0.1:9000</code> 即可，只要服务端监听端口与反向代理目标一致。</div>
+<div class="step"><div class="num">1</div><div class="body">宝塔 → <b>Python 项目管理器</b> → <b>添加项目</b>，按下表填写：</div></div>
+<table>
+  <tr><th>项</th><th>填什么</th></tr>
+  <tr><td>项目名称</td><td>随意，如 <code>gg_server</code></td></tr>
+  <tr><td>项目路径</td><td><code>/www/wwwroot/gg_server</code></td></tr>
+  <tr><td>Python 版本</td><td>选刚安装的 3.10+</td></tr>
+  <tr><td>启动方式</td><td>框架（Flask）</td></tr>
+  <tr><td>启动文件</td><td><code>app.py</code>（默认即可）</td></tr>
+  <tr><td>监听端口</td><td>旧版填 <code>9000</code>；新版没有此框 → 跳过</td></tr>
+  <tr><td>启动参数</td><td>新版可填 <code>9000</code> 或 <code>--port 9000</code>；留空则默认 9000</td></tr>
+</table>
+<div class="step"><div class="num">2</div><div class="body">添加后项目会自动执行 <code>pip install -r requirements.txt</code> 安装依赖；若没自动装，点项目 → <b>依赖管理</b>，或手动执行：</div></div>
+<pre><code>cd /www/wwwroot/gg_server
+pip install -r requirements.txt</code></pre>
+<div class="step"><div class="num">3</div><div class="body">点 <b>启动</b>。项目状态变为「运行中」即成功。</div></div>
+</div>
+
+<div class="card" id="s6">
+<a class="toplink" href="#top">返回目录 ↑</a>
+<h2>6. 验证服务端是否正常</h2>
+<p>在服务器命令行执行：</p>
+<pre><code>curl -I http://127.0.0.1:9000/</code></pre>
+<div class="ok">返回 <code>HTTP/1.1 200 OK</code> → 服务端已在运行。若改了端口（如 9001），把测试地址与反向代理目标同步改成对应端口。</div>
+<p>也可以直接看日志文件（最可靠，不依赖宝塔面板日志）：</p>
+<pre><code>tail -50 /www/wwwroot/gg_server/server.log</code></pre>
+<p>出现 <code>[gg_server] 群守护者后台服务端已启动</code> 横幅与 <code>Running on all addresses (0.0.0.0)</code> 即正常。</p>
+</div>
+
+<div class="card" id="s7">
+<a class="toplink" href="#top">返回目录 ↑</a>
+<h2>7. 域名 + 反向代理 + HTTPS（推荐）</h2>
+<div class="tip">只用 IP 访问可跳过本节；但推荐配置域名，用 80 / 443 端口更稳定，QQ / 微信里打开外链也不会被拦截。</div>
+<div class="step"><div class="num">1</div><div class="body">域名解析：到域名服务商后台，添加 A 记录指向你的服务器公网 IP。</div></div>
+<div class="step"><div class="num">2</div><div class="body">宝塔 → <b>网站</b> → <b>添加站点</b>：域名填 <code>gg.example.com</code>（换成你的），其它默认，提交。</div></div>
+<div class="step"><div class="num">3</div><div class="body">进入该站点 → <b>反向代理</b> → <b>添加反向代理</b>：</div></div>
+<table>
+  <tr><th>项</th><th>填什么</th></tr>
+  <tr><td>代理名称</td><td><code>gg_server</code></td></tr>
+  <tr><td>目标 URL</td><td><code>http://127.0.0.1:9000</code></td></tr>
+</table>
+<div class="step"><div class="num">4</div><div class="body"><b>开启 HTTPS（推荐）</b>：站点 → <b>SSL</b> → <b>Let's Encrypt</b> → 选择域名申请证书并开启「强制 HTTPS」。</div></div>
+<div class="step"><div class="num">5</div><div class="body">浏览器打开 <code>https://你的域名</code> → 出现注册页即部署成功。</div></div>
+</div>
+
+<div class="card" id="s8">
+<a class="toplink" href="#top">返回目录 ↑</a>
+<h2>8. 防火墙与云安全组放行</h2>
+<p>如果要用 IP + 9000 端口直连访问，需要放行 <b>两处</b>（缺一不可）：</p>
+<div class="step"><div class="num">1</div><div class="body"><b>宝塔防火墙</b>：宝塔 → <b>安全</b> → 放行端口 <code>9000</code>（TCP）。</div></div>
+<div class="step"><div class="num">2</div><div class="body"><b>云安全组</b>：云服务器控制台 → 安全组 → 入方向规则 → 放行 TCP <code>9000</code>，来源 <code>0.0.0.0/0</code>，并确认实例已关联该安全组。</div></div>
+<p>放行后在外网机器验证：</p>
+<pre><code>telnet 你的服务器IP 9000</code></pre>
+<div class="warn"><b>强烈建议改用 80 / 443 + 域名反向代理</b>：非常用端口更容易被运营商 / 云环境干扰。最稳的访问方式是第 7 节方案，此时云安全组只需放行 80 / 443。</div>
+</div>
+
+<div class="card" id="s9">
+<a class="toplink" href="#top">返回目录 ↑</a>
+<h2>9. 注册首个管理员账号</h2>
+<div class="step"><div class="num">1</div><div class="body">浏览器打开后台地址：<code>https://你的域名/</code>（或 <code>http://IP:9000/</code>）。</div></div>
+<div class="step"><div class="num">2</div><div class="body">点「<b>首次使用？注册</b>」→ 填写用户名 + 密码（至少 6 位）。</div></div>
+<div class="step"><div class="num">3</div><div class="body"><b>第一个注册的账号自动成为 owner</b>（所有者，拥有全部权限）；注册后即自动登录进入后台。</div></div>
+<div class="warn">注册通道只在<b>尚无任何用户时开放</b>。之后新账号由 owner / admin 在「用户管理」中创建。</div>
+<div class="ok">登录后默认进入「误判复盘」页：顶部有 5 张统计卡片，左侧 7 个导航标签（误判复盘 / 已确认违规 / 误封申诉 / 修正建议 / 待执行动作 / 系统更新 / 用户管理）。</div>
+</div>
+
+<div class="card" id="s10">
+<a class="toplink" href="#top">返回目录 ↑</a>
+<h2>10. 插件端接入与云同步</h2>
+<p>在 AstrBot 的 <b>群守护者插件配置</b>（<code>_conf_schema.json</code> 中相关项）里填写以下内容：</p>
+<table>
+  <tr><th>配置项</th><th>填什么</th></tr>
+  <tr><td><code>sync_server_url</code></td><td><code>https://你的域名</code>（或 <code>http://IP:9000</code>）</td></tr>
+  <tr><td><code>sync_username</code></td><td>后台注册的账号（如 owner）</td></tr>
+  <tr><td><code>sync_password</code></td><td>对应密码</td></tr>
+  <tr><td><code>sync_auto</code></td><td>开（启动 + 每 10 分钟自动双向同步）</td></tr>
+</table>
+<div class="step"><div class="num">1</div><div class="body">保存配置并重启 AstrBot / 插件。</div></div>
+<div class="step"><div class="num">2</div><div class="body">插件启动时会自动 <b>push</b>：误判复盘 / 已确认违规 / 修正建议上传到服务端。</div></div>
+<div class="step"><div class="num">3</div><div class="body">刷新后台页面 → 各表格出现插件同步的数据即接入成功。</div></div>
+<div class="tip"><b>换服务器快速恢复</b>：新机器装好插件并填同样的 <code>sync_server_*</code> 后重启，插件自动 <b>pull</b> 回全部云端数据，无需手动搬运。</div>
+</div>
+
+<div class="card" id="s11">
+<a class="toplink" href="#top">返回目录 ↑</a>
+<h2>11. 多用户与权限</h2>
+<table>
+  <tr><th>角色</th><th>权限</th></tr>
+  <tr><td>普通成员 member</td><td>查看全部数据（误判复盘 / 已确认违规 / 申诉列表）</td></tr>
+  <tr><td>管理员 admin</td><td>查看 + 确认违规 / 放行 / 标记误封解禁 / 审核申诉 + 创建用户</td></tr>
+  <tr><td>所有者 owner</td><td>全部权限 + 用户管理（创建 / 删除用户）</td></tr>
+</table>
+<p>创建方式：owner / admin 登录后 → 左侧「<b>用户管理</b>」→ 输入用户名 / 密码 / 选择角色 → 创建。</p>
+<p>普通成员登录后只读查看，不显示任何操作按钮；<b>管理员操作都会生成待执行动作</b>，由插件下次同步执行。</p>
+</div>
+
+<div class="card" id="s12">
+<a class="toplink" href="#top">返回目录 ↑</a>
+<h2>12. 误封申诉 / 解禁通道</h2>
+<p>被处罚用户可以提交误封申诉，管理员审核通过后插件自动解除禁言：</p>
+<div class="step"><div class="num">1</div><div class="body"><b>用户提交</b>（两种方式任选）：<br>
+① 打开<b>公开申诉页</b> <code>https://你的域名/appeal</code> —— 无需登录、不含任何后台功能，<b>可以直接把这个链接发给群成员</b>，填 QQ 号 + 群号（可选）+ 申诉理由提交；<br>
+② 或登录后台，在「误封申诉 / 解禁」页顶部表单提交。</div></div>
+<div class="step"><div class="num">2</div><div class="body"><b>管理员审核</b>：后台「误封申诉」页看到 pending 申诉 → 点「通过并解禁」或「驳回」；也可在「已确认违规」页直接点「标记误封解禁」。</div></div>
+<div class="step"><div class="num">3</div><div class="body"><b>自动解禁</b>：服务端生成 <code>unban</code> 动作 → 插件下次同步执行 <code>set_group_ban(duration=0)</code> 解除禁言并记录日志。</div></div>
+<div class="warn">公开申诉页防刷：同一 IP 10 分钟内最多提交 3 次（超限返回 429）。开关：<code>app.py</code> 顶部 <code>PUBLIC_APPEAL_OPEN = True</code>，改为 <code>False</code> 即关闭公开页（后台提交不受影响）。</div>
+</div>
+
+<div class="card" id="s13">
+<a class="toplink" href="#top">返回目录 ↑</a>
+<h2>13. 数据备份与换服务器迁移</h2>
+<div class="step"><div class="num">1</div><div class="body"><b>备份</b>：只需备份 <code>/www/wwwroot/gg_server/data/</code> 整个目录（内含 SQLite 数据库 <code>server.db</code>）。建议定期整目录下载 / 复制。</div></div>
+<div class="step"><div class="num">2</div><div class="body"><b>迁移</b>：新机器按第 3 ~ 5 节部署服务端，然后把旧机的 <code>data/</code> 目录覆盖到新机同名位置。</div></div>
+<div class="step"><div class="num">3</div><div class="body">重启服务端 → 数据（账号 / 误判复盘 / 违规 / 申诉 / 待执行动作）全部恢复。</div></div>
+<div class="step"><div class="num">4</div><div class="body">插件端：新机器装好插件、填同样的 <code>sync_server_*</code> 后重启，自动 pull 写回本地数据。</div></div>
+<div class="ok">服务器换 IP / 换域名时，只需更新插件配置里的 <code>sync_server_url</code>，数据库无需改动。</div>
+</div>
+
+<div class="card" id="s14">
+<a class="toplink" href="#top">返回目录 ↑</a>
+<h2>14. 升级与更新</h2>
+<h3>方式一：OTA 在线更新（v1.1.0+）</h3>
+<div class="step"><div class="num">1</div><div class="body">在 <code>gg_server/update_source.json</code> 填版本清单地址：</div></div>
+<pre><code>{ "url": "https://你的域名/版本清单.json" }</code></pre>
+<div class="step"><div class="num">2</div><div class="body">版本清单 JSON（放在可公网访问的位置）格式：</div></div>
+<pre><code>{ "version": "1.2.0", "notes": "新增功能", "zip_url": "https://你的域名/gg_server_1.2.0.zip" }</code></pre>
+<div class="step"><div class="num">3</div><div class="body">后台「系统更新」页 → 查看当前 / 最新版本 → 点「应用服务器端更新」：自动下载 zip → 解压覆盖代码（自动备份到 <code>backup_时间戳/</code>，保留 <code>data/</code> 与 <code>update_source.json</code>）。</div></div>
+<div class="step"><div class="num">4</div><div class="body">更新完成后<b>手动重启服务端</b>生效。</div></div>
+<h3>方式二：手动覆盖更新</h3>
+<div class="step"><div class="num">1</div><div class="body">停止服务端 → 上传新版 zip 覆盖（保留 <code>data/</code> 目录）→ 重启。</div></div>
+<div class="warn">更新包 zip 内需包含 <code>app.py</code>（顶层或任意子目录均可），版本号写在清单的 <code>version</code>。</div>
+</div>
+
+<div class="card" id="s15">
+<a class="toplink" href="#top">返回目录 ↑</a>
+<h2>15. 常见问题排查</h2>
+<h3>Q1：日志是空的？</h3>
+<p>新版服务端会写文件日志 <code>server.log</code>：① 先 <code>tail -50 /www/wwwroot/gg_server/server.log</code> —— 有启动横幅说明服务正常（只是宝塔面板日志显示问题）；没有该文件说明服务没启动；② 看项目管理器里项目是否「运行中」；③ 确认依赖 <code>pip install -r requirements.txt</code>；④ 手动 <code>python -u app.py</code> 看输出；⑤ 启动命令可加 <code>-u</code> 无缓冲实时刷日志。</p>
+<h3>Q2：端口开了还是连不上？</h3>
+<p>按顺序排查：① <code>ss -lntp | grep 9000</code> 看是否 <code>0.0.0.0:9000</code> 监听（若是 <code>127.0.0.1</code> 说明只监听本机，检查启动方式 / gunicorn 需 <code>-b 0.0.0.0:9000</code>）；② 本机 <code>curl -I http://127.0.0.1:9000/</code> 通、公网不通 = 公网入口问题；③ 宝塔「安全」放行 9000 并 <code>firewall-cmd --reload</code>；④ 云控制台安全组入方向放行 TCP 9000、来源 0.0.0.0/0，实例已关联；⑤ 另一台机器 <code>telnet 你的IP 9000</code>；⑥ 最稳：用域名 + 80/443 反向代理。</p>
+<h3>Q3：出现 <code>ModuleNotFoundError: flask</code>？</h3>
+<p>依赖没装到当前 Python：在项目目录手动执行 <code>pip install -r requirements.txt</code>；或在宝塔项目管理器里确认「依赖管理」列表有 flask，且项目使用的 Python 版本与安装依赖的一致。</p>
+<h3>Q4：出现 <code>Address already in use</code>？</h3>
+<p>端口被占用。换一个端口（如 9001）并把反向代理目标同步修改；或杀掉占用进程：<code>ss -lntp | grep 9000</code> 找到 PID → <code>kill PID</code>。</p>
+<h3>Q5：反向代理后页面打开是 502 / 404？</h3>
+<p>① 确认服务端在运行且监听端口与反向代理「目标 URL」一致；② 反向代理目标写 <code>http://127.0.0.1:9000</code>（不要写成公网地址）；③ 若改了端口，目标 URL 要同步改。</p>
+<h3>Q6：忘记管理员密码？</h3>
+<p>删除 <code>data/server.db</code> 后重新注册首个账号（会清空云端数据，谨慎操作）。</p>
+<h3>Q7：插件同步不生效？</h3>
+<p>① 确认插件配置的 <code>sync_server_url</code> 可公网访问（浏览器能打开）；② 确认用户名 / 密码正确；③ 看插件日志是否有 401 / 403；④ 确认 <code>sync_auto</code> 开启并重启插件。</p>
+<h3>Q8：公开申诉页 429？</h3>
+<p>同一 IP 10 分钟内提交超过 3 次会限流，等待 10 分钟后再试。</p>
+</div>
+
+<div class="card" id="s16">
+<a class="toplink" href="#top">返回目录 ↑</a>
+<h2>16. 附录</h2>
+<h3>目录结构</h3>
+<pre>
+gg_server/
+  app.py               # 主程序：API + 后台页面 + /docs + /appeal
+  requirements.txt     # flask
+  templates/
+    index.html         # 后台管理界面（登录/统计/表格/审核）
+    appeal.html        # 公开申诉页（无需登录）
+    docs.html          # 服务端内置在线教程
+  data/server.db       # SQLite 数据库（运行时自动生成，备份它即可迁移）
+  server.log           # 运行日志
+  update_source.json   # OTA 更新源配置（可选）
+</pre>
+<h3>API 一览</h3>
+<table>
+  <tr><th>方法</th><th>路径</th><th>权限</th><th>说明</th></tr>
+  <tr><td>POST</td><td>/api/auth/register</td><td>仅首用户</td><td>注册 owner</td></tr>
+  <tr><td>POST</td><td>/api/auth/login</td><td>-</td><td>登录，返回 Bearer token</td></tr>
+  <tr><td>GET</td><td>/api/me</td><td>登录</td><td>当前用户信息</td></tr>
+  <tr><td>GET/POST</td><td>/api/users</td><td>admin/owner</td><td>用户列表 / 创建用户</td></tr>
+  <tr><td>DELETE</td><td>/api/users/&lt;id&gt;</td><td>owner</td><td>删除用户</td></tr>
+  <tr><td>POST</td><td>/api/sync/push</td><td>登录</td><td>插件上传（feedback/suggestions/violations）</td></tr>
+  <tr><td>GET</td><td>/api/sync/pull</td><td>登录</td><td>插件拉取（含待执行动作）</td></tr>
+  <tr><td>GET</td><td>/api/data/feedback</td><td>登录</td><td>误判复盘（只读）</td></tr>
+  <tr><td>GET</td><td>/api/data/violations</td><td>登录</td><td>已确认违规（只读）</td></tr>
+  <tr><td>POST</td><td>/api/data/violations/&lt;id&gt;</td><td>admin</td><td>{action: confirm|clear} 生成待执行动作</td></tr>
+  <tr><td>POST</td><td>/api/violations/&lt;id&gt;/mark_false</td><td>admin</td><td>标记误封 → 自动生成解禁动作</td></tr>
+  <tr><td>GET/POST</td><td>/api/appeals</td><td>登录</td><td>误封申诉：查看 / 提交</td></tr>
+  <tr><td>POST</td><td>/api/appeals/&lt;id&gt;</td><td>admin</td><td>审核：approve（通过并解禁）/ reject</td></tr>
+  <tr><td>GET</td><td>/api/data/actions</td><td>登录</td><td>待执行动作</td></tr>
+  <tr><td>GET</td><td>/api/update/check</td><td>登录</td><td>OTA 检查新版本</td></tr>
+  <tr><td>POST</td><td>/api/update/apply</td><td>admin</td><td>OTA 下载更新包并覆盖（自动备份）</td></tr>
+  <tr><td>GET</td><td>/api/stats</td><td>登录</td><td>统计（含待审申诉数）</td></tr>
+  <tr><td>POST</td><td>/api/public/appeal</td><td>公开</td><td>公开申诉提交（IP 限流）</td></tr>
+</table>
+<h3>关键配置开关</h3>
+<table>
+  <tr><th>配置</th><th>位置</th><th>说明</th></tr>
+  <tr><td><code>PUBLIC_APPEAL_OPEN</code></td><td>app.py 顶部</td><td>公开申诉页开关，默认 True</td></tr>
+  <tr><td><code>PORT</code></td><td>环境变量 / 启动参数</td><td>监听端口，默认 9000</td></tr>
+  <tr><td><code>update_source.json</code></td><td>项目目录</td><td>OTA 版本清单 URL</td></tr>
+</table>
+</div>
+
+<div class="card" style="text-align:center;color:var(--muted);font-size:13px">
+  群守护者 · 后台服务端部署教程（v1.1.0） · 本文档为公开静态网页，可随时用浏览器打开查看
+</div>
+
+</div>
+</body>
+</html>
